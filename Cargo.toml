@@ -1,0 +1,13 @@
+[package]
+name = "s3bmsdashboard"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0" }
+anyhow = "1.0"
+eframe = { version = "0.18.0", features = ["persistence", "dark-light"] }
+egui = { version = "0.18.1", features = ["persistence"] }
+ureq = "2.4.0"
+regex = "1.5.6"
+lazy_static = "1.4.0"
