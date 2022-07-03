@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::thread::{self, JoinHandle};
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -23,7 +24,7 @@ pub struct Data {
 #[derive(Default)]
 pub struct Main {
     // in mV
-    pub voltage: u32,
+    pub voltage: f32,
     // in mA
     pub current: f32,
     // in %
@@ -50,15 +51,46 @@ pub struct Ucell {
     pub cell_voltage: Vec<u16>,
 }
 
-pub fn fetch(ip: &str) -> anyhow::Result<Data> {
-    Ok(Data {
-        main: Main::default(),
-        ucell: ucell(ip)?,
-    })
+pub struct Request {
+    main_task: JoinHandle<anyhow::Result<Main>>,
+    ucell_task: JoinHandle<anyhow::Result<Ucell>>,
 }
 
-async fn main_data(ip: &str) -> anyhow::Result<Main> {
-    let url = format!("http://{ip}/main_data.shtml");
+pub fn fetch(ip: &str) -> Request {
+    let owned_ip = ip.to_string();
+    let main_task = thread::spawn(move || main_data(&owned_ip));
+    let owned_ip = ip.to_string();
+    let ucell_task = thread::spawn(move || ucell(&owned_ip));
+
+    Request {
+        main_task,
+        ucell_task,
+    }
+}
+
+impl Request {
+    pub fn is_finished(&self) -> bool {
+        self.main_task.is_finished() && self.ucell_task.is_finished()
+    }
+
+    pub fn join(self) -> Result<Data, Error> {
+        Ok(Data {
+            main: join_task(self.main_task)?,
+            ucell: join_task(self.ucell_task)?,
+        })
+    }
+}
+
+fn join_task<T>(task: JoinHandle<anyhow::Result<T>>) -> Result<T, Error> {
+    match task.join() {
+        Ok(Ok(d)) => Ok(d),
+        Ok(Err(e)) => Err(Error::Fetch(e)),
+        Err(_) => Err(Error::Unexpected),
+    }
+}
+
+fn main_data(ip: &str) -> anyhow::Result<Main> {
+    let url = format!("{ip}/main_data.shtml");
     let resp = ureq::get(&url).call()?;
     let text = resp.into_string()?;
 
@@ -66,19 +98,31 @@ async fn main_data(ip: &str) -> anyhow::Result<Main> {
     let mut stats_iter = stats_captures.get(1).unwrap().as_str().split(',');
 
     skip(&mut stats_iter, 1);
-    let voltage = parse_next(&mut stats_iter)?;
+    let mut voltage = parse_next(&mut stats_iter)?;
+    voltage /= 1000.0;
+
     skip(&mut stats_iter, 2);
     let current = parse_next(&mut stats_iter)?;
+
     skip(&mut stats_iter, 2);
-    let state_of_charge = parse_next(&mut stats_iter)?;
+    let mut state_of_charge = parse_next(&mut stats_iter)?;
+    state_of_charge /= 10.0;
+    
     skip(&mut stats_iter, 2);
-    let temp_avg = parse_next(&mut stats_iter)?;
+    let mut temp_avg = parse_next(&mut stats_iter)?;
+    temp_avg /= 10.0;
+    
     skip(&mut stats_iter, 2);
-    let temp_min = parse_next(&mut stats_iter)?;
+    let mut temp_min = parse_next(&mut stats_iter)?;
+    temp_min /= 10.0;
+    
     skip(&mut stats_iter, 2);
-    let temp_max = parse_next(&mut stats_iter)?;
+    let mut temp_max = parse_next(&mut stats_iter)?;
+    temp_max /= 10.0;
+    
     skip(&mut stats_iter, 2);
-    let temp_master = parse_next(&mut stats_iter)?;
+    let mut temp_master = parse_next(&mut stats_iter)?;
+    temp_master /= 10.0;
 
     Ok(Main {
         voltage,
@@ -92,7 +136,7 @@ async fn main_data(ip: &str) -> anyhow::Result<Main> {
 }
 
 fn ucell(ip: &str) -> anyhow::Result<Ucell> {
-    let url = format!("http://{ip}/ucell.shtml");
+    let url = format!("{ip}/ucell.shtml");
     let resp = ureq::get(&url).call()?;
     let text = resp.into_string()?;
 
