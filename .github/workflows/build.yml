@@ -1,0 +1,54 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - 'main'
+  schedule:
+  - cron:  '0 0 1 * *' # monthly
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+    - run: sudo apt-get update
+    - run: sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev libgtk-3-dev
+    - run: cargo build --release
+    - run: cargo test --release
+    - run: strip target/release/s3bmsdashboard
+    - uses: softprops/action-gh-release@v0.1.14
+      with:
+        name: 's3bmsdashboard nightly'
+        body: 'Nightly build of s3bmsdashboard'
+        tag_name: 'nightly'
+        fail_on_unmatched_files: true
+        files: |
+          target/release/s3bmsdashboard
+  
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+    - run: cargo build --release
+    - run: cargo test --release
+    - run: strip target/release/s3bmsdashboard.exe
+    - uses: softprops/action-gh-release@v0.1.14
+      with:
+        name: 's3bmsdashboard nightly'
+        body: 'Nightly build of s3bmsdashboard'
+        tag_name: 'nightly'
+        prerelease: false
+        fail_on_unmatched_files: true
+        files: |
+          target/release/s3bmsdashboard.exe
