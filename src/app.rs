@@ -211,37 +211,23 @@ impl eframe::App for DashboardApp {
             if let Some(data) = &self.data {
                 let pos = ui.cursor().min;
                 let size = ui.available_size();
-                let stack_size = size / Vec2::new(8.0, 2.0);
+                let stack_size = size / Vec2::new(4.0, 2.0);
 
-                for i in 0..4 {
-                    let stack_pos = pos + Vec2::new(i as f32 * stack_size.x, 0.0);
-                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
-                    let offset = i * 9;
-                    ui.allocate_ui_at_rect(stack_rect, |ui| {
-                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
-                    });
-                }
-                for i in 0..4 {
-                    let stack_pos = pos + Vec2::new(i as f32 * stack_size.x, stack_size.y);
-                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
-                    let offset = i * 9 + 36;
-                    ui.allocate_ui_at_rect(stack_rect, |ui| {
-                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
-                    });
-                }
+                const STACK_POS: [(f32, f32); 8] = [
+                    (2.0, 1.0),
+                    (2.0, 0.0),
+                    (3.0, 0.0),
+                    (3.0, 1.0),
+                    (0.0, 1.0),
+                    (0.0, 0.0),
+                    (1.0, 0.0),
+                    (1.0, 1.0),
+                ];
 
-                for i in 0..4 {
-                    let stack_pos = pos + Vec2::new((i + 4) as f32 * stack_size.x, 0.0);
+                for (i, (x, y)) in STACK_POS.iter().enumerate() {
+                    let stack_pos = pos + Vec2::new(x * stack_size.x, y * stack_size.y);
                     let stack_rect = Rect::from_min_size(stack_pos, stack_size);
-                    let offset = i * 9 + 72;
-                    ui.allocate_ui_at_rect(stack_rect, |ui| {
-                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
-                    });
-                }
-                for i in 0..4 {
-                    let stack_pos = pos + Vec2::new((i + 4) as f32 * stack_size.x, stack_size.y);
-                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
-                    let offset = i * 9 + 108;
+                    let offset = i * 18;
                     ui.allocate_ui_at_rect(stack_rect, |ui| {
                         draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
                     });
@@ -253,10 +239,10 @@ impl eframe::App for DashboardApp {
 
 fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
     let pos = ui.cursor().min;
-    let cell_size = ui.available_size() / Vec2::new(1.0, 9.0);
+    let cell_size = ui.available_size() / Vec2::new(2.0, 9.0);
 
     for i in 0..9 {
-        let cell_index = offset + i;
+        let cell_index = offset + (8 - i);
         let cell_voltage = ucell
             .cell_voltage
             .get(cell_index)
@@ -265,6 +251,42 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
         let bg_color = heatmap_color(ucell.avg_voltage, cell_voltage, heatmap_delta);
 
         let cell_pos = pos + Vec2::new(0.0, i as f32 * cell_size.y);
+        let mut rect = Rect::from_min_size(cell_pos, cell_size);
+        ui.painter().rect_filled(rect, Rounding::none(), bg_color);
+
+        let font_size = (cell_size.x + cell_size.y) / 8.0;
+
+        ui.allocate_ui_at_rect(rect, |ui| {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    RichText::new(cell_voltage.to_string())
+                        .font(FontId::new(font_size, FontFamily::Monospace)),
+                );
+            });
+        });
+
+        rect.min.y += cell_size.y / 2.0;
+        rect.max.x -= 10.0;
+        ui.allocate_ui_at_rect(rect, |ui| {
+            ui.with_layout(Layout::right_to_left(), |ui| {
+                ui.label(
+                    RichText::new((cell_index + 1).to_string())
+                        .font(FontId::new(font_size / 2.0, FontFamily::Monospace)),
+                )
+            });
+        });
+    }
+
+    for i in 0..9 {
+        let cell_index = offset + i + 9;
+        let cell_voltage = ucell
+            .cell_voltage
+            .get(cell_index)
+            .copied()
+            .unwrap_or(u16::MAX);
+        let bg_color = heatmap_color(ucell.avg_voltage, cell_voltage, heatmap_delta);
+
+        let cell_pos = pos + Vec2::new(cell_size.x, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
         ui.painter().rect_filled(rect, Rounding::none(), bg_color);
 
