@@ -2,13 +2,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use egui::style::Margin;
 use egui::{
-    menu, CentralPanel, Color32, DragValue, Frame, Grid, RichText, Rounding, ScrollArea, SidePanel,
-    TopBottomPanel, Vec2,
+    menu, CentralPanel, Color32, DragValue, FontFamily, FontId, Frame, Grid, Layout, Rect,
+    RichText, Rounding, ScrollArea, SidePanel, TopBottomPanel, Ui, Vec2,
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::{self, fetch, Data, Request};
+use crate::api::{self, fetch, Data, Request, Ucell};
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
@@ -30,8 +30,8 @@ impl Default for DashboardApp {
     fn default() -> Self {
         Self {
             ip: "http://192.168.0.200".into(),
-            poll_rate: 2000,
-            heatmap_delta: 200.0,
+            poll_rate: 1000,
+            heatmap_delta: 100.0,
             last_poll: 0,
             request: None,
             data: None,
@@ -65,28 +65,30 @@ impl eframe::App for DashboardApp {
 
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             menu::bar(ui, |ui| {
-                ui.label("ip");
+                ui.label("IP");
                 ui.horizontal(|ui| {
                     ui.set_width(160.0);
                     ui.text_edit_singleline(&mut self.ip);
                 });
 
-                ui.label("poll rate");
+                ui.label("Poll rate");
                 ui.add(
                     DragValue::new(&mut self.poll_rate)
                         .clamp_range(100..=10000)
                         .speed(10),
                 );
 
-                ui.label("heatmap delta");
+                ui.label("Heatmap delta");
                 ui.add(
                     DragValue::new(&mut self.heatmap_delta)
-                        .clamp_range(5.0..=800.0)
+                        .clamp_range(5.0..=1000.0)
                         .speed(1.0),
                 );
 
                 if self.request.is_some() {
-                    ui.spinner();
+                    ui.with_layout(Layout::right_to_left(), |ui| {
+                        ui.spinner();
+                    });
                 }
             });
         });
@@ -191,44 +193,101 @@ impl eframe::App for DashboardApp {
                     }
                 });
 
-            if let Some(data) = &self.data {
-                let spacing = 10.0;
-                let w = (ui.available_width() - spacing * 11.0) / 10.0;
-                Grid::new("cells")
-                    .min_col_width(w)
-                    .max_col_width(w)
-                    .spacing(Vec2::new(spacing, spacing))
-                    .show(ui, |ui| {
-                        let ucell = &data.ucell;
-
-                        for (i, row) in ucell.cell_voltage.chunks(9).enumerate() {
-                            ui.label(RichText::new((i + 1).to_string()).monospace());
-                            for &cell in row {
-                                let bg = heatmap_color(ucell.avg_voltage, cell, self.heatmap_delta);
-                                ui.label(
-                                    RichText::new(cell.to_string())
-                                        .background_color(bg)
-                                        .monospace(),
-                                );
-                            }
-                            ui.end_row();
-                        }
-                    });
-            }
             match &self.error {
                 Some(api::Error::Fetch(e)) => {
                     let text = format!("Could not fetch data:\n {e}");
-                    ui.horizontal_centered(|ui| {
+                    ui.vertical_centered(|ui| {
                         ui.label(RichText::new(&text).color(Color32::RED));
                     });
                 }
                 Some(api::Error::Unexpected) => {
-                    ui.horizontal_centered(|ui| {
+                    ui.vertical_centered(|ui| {
                         ui.label(RichText::new("Unexpected error").color(Color32::RED));
                     });
                 }
                 None => (),
             }
+
+            if let Some(data) = &self.data {
+                let pos = ui.cursor().min;
+                let size = ui.available_size();
+                let stack_size = size / Vec2::new(8.0, 2.0);
+
+                for i in 0..4 {
+                    let stack_pos = pos + Vec2::new(i as f32 * stack_size.x, 0.0);
+                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
+                    let offset = i * 9;
+                    ui.allocate_ui_at_rect(stack_rect, |ui| {
+                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
+                    });
+                }
+                for i in 0..4 {
+                    let stack_pos = pos + Vec2::new(i as f32 * stack_size.x, stack_size.y);
+                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
+                    let offset = i * 9 + 36;
+                    ui.allocate_ui_at_rect(stack_rect, |ui| {
+                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
+                    });
+                }
+
+                for i in 0..4 {
+                    let stack_pos = pos + Vec2::new((i + 4) as f32 * stack_size.x, 0.0);
+                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
+                    let offset = i * 9 + 72;
+                    ui.allocate_ui_at_rect(stack_rect, |ui| {
+                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
+                    });
+                }
+                for i in 0..4 {
+                    let stack_pos = pos + Vec2::new((i + 4) as f32 * stack_size.x, stack_size.y);
+                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
+                    let offset = i * 9 + 108;
+                    ui.allocate_ui_at_rect(stack_rect, |ui| {
+                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
+                    });
+                }
+            }
+        });
+    }
+}
+
+fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
+    let pos = ui.cursor().min;
+    let cell_size = ui.available_size() / Vec2::new(1.0, 9.0);
+
+    for i in 0..9 {
+        let cell_index = offset + i;
+        let cell_voltage = ucell
+            .cell_voltage
+            .get(cell_index)
+            .copied()
+            .unwrap_or(u16::MAX);
+        let bg_color = heatmap_color(ucell.avg_voltage, cell_voltage, heatmap_delta);
+
+        let cell_pos = pos + Vec2::new(0.0, i as f32 * cell_size.y);
+        let mut rect = Rect::from_min_size(cell_pos, cell_size);
+        ui.painter().rect_filled(rect, Rounding::none(), bg_color);
+
+        let font_size = (cell_size.x + cell_size.y) / 8.0;
+
+        ui.allocate_ui_at_rect(rect, |ui| {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    RichText::new(cell_voltage.to_string())
+                        .font(FontId::new(font_size, FontFamily::Monospace)),
+                );
+            });
+        });
+
+        rect.min.y += cell_size.y / 2.0;
+        rect.max.x -= 10.0;
+        ui.allocate_ui_at_rect(rect, |ui| {
+            ui.with_layout(Layout::right_to_left(), |ui| {
+                ui.label(
+                    RichText::new((cell_index + 1).to_string())
+                        .font(FontId::new(font_size / 2.0, FontFamily::Monospace)),
+                )
+            });
         });
     }
 }
@@ -261,13 +320,15 @@ impl DashboardApp {
 }
 
 fn heatmap_color(avg: u16, cell: u16, delta: f32) -> Color32 {
-    let diff = ((cell as f32 - avg as f32) / delta).clamp(-1.0, 1.0);
+    const BG: u8 = 30;
+    const RANGE: f32 = (255 - BG) as f32;
+    let diff = ((cell as f32 - avg as f32) / (delta / 2.0)).clamp(-1.0, 1.0);
     if diff < 0.0 {
-        let r = (-255.0 * diff) as u8;
-        Color32::from_rgb(r, 30, 30)
+        let r = (-RANGE * diff) as u8 + BG;
+        Color32::from_rgb(r, BG, BG)
     } else {
-        let b = (255.0 * diff) as u8;
-        Color32::from_rgb(30, 30, b)
+        let b = (RANGE * diff) as u8 + BG;
+        Color32::from_rgb(BG, BG, b)
     }
 }
 
