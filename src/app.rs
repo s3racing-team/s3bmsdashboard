@@ -198,9 +198,8 @@ impl eframe::App for DashboardApp {
 
             match &self.error {
                 Some(api::Error::Fetch(_)) => {
-                    let text = format!("Error loading data");
                     ui.vertical_centered(|ui| {
-                        ui.label(RichText::new(&text).color(Color32::RED));
+                        ui.label(RichText::new("Error loading data").color(Color32::RED));
                     });
                 }
                 Some(api::Error::Unexpected) => {
