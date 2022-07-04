@@ -22,6 +22,10 @@ jobs:
     - run: cargo build --release
     - run: cargo test --release
     - run: strip target/release/s3bmsdashboard
+    - run: git config user.name "${GITHUB_ACTOR}"
+    - run: git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+    - run: git tag -fa nightly main -m ""
+    - run: git push --force origin nightly
     - uses: softprops/action-gh-release@v0.1.14
       with:
         name: 's3bmsdashboard nightly'
@@ -48,8 +52,6 @@ jobs:
         name: 's3bmsdashboard nightly'
         body: 'Nightly build of s3bmsdashboard'
         tag_name: 'nightly'
-        target_commitish: 'main'
-        prerelease: false
         fail_on_unmatched_files: true
         files: |
           target/release/s3bmsdashboard.exe
