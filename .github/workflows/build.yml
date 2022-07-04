@@ -48,6 +48,7 @@ jobs:
         name: 's3bmsdashboard nightly'
         body: 'Nightly build of s3bmsdashboard'
         tag_name: 'nightly'
+        target_commitish: 'main'
         prerelease: false
         fail_on_unmatched_files: true
         files: |
