@@ -88,6 +88,9 @@ impl eframe::App for DashboardApp {
                 if self.request.is_some() {
                     ui.with_layout(Layout::right_to_left(), |ui| {
                         ui.spinner();
+                        if ui.button("cancel").clicked() {
+                            self.request = None;
+                        }
                     });
                 }
             });
