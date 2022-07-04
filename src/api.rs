@@ -107,19 +107,19 @@ fn main_data(ip: &str) -> anyhow::Result<Main> {
     skip(&mut stats_iter, 2);
     let mut state_of_charge = parse_next(&mut stats_iter)?;
     state_of_charge /= 10.0;
-    
+
     skip(&mut stats_iter, 2);
     let mut temp_avg = parse_next(&mut stats_iter)?;
     temp_avg /= 10.0;
-    
+
     skip(&mut stats_iter, 2);
     let mut temp_min = parse_next(&mut stats_iter)?;
     temp_min /= 10.0;
-    
+
     skip(&mut stats_iter, 2);
     let mut temp_max = parse_next(&mut stats_iter)?;
     temp_max /= 10.0;
-    
+
     skip(&mut stats_iter, 2);
     let mut temp_master = parse_next(&mut stats_iter)?;
     temp_master /= 10.0;
