@@ -2,11 +2,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use egui::style::Margin;
 use egui::{
-    menu, CentralPanel, Color32, DragValue, FontFamily, FontId, Frame, Grid, Layout, Rect,
-    RichText, Rounding, ScrollArea, SidePanel, TopBottomPanel, Ui, Vec2,
+    menu, CentralPanel, Color32, ComboBox, DragValue, FontFamily, FontId, Frame, Grid, Layout,
+    Rect, RichText, Rounding, ScrollArea, SidePanel, TopBottomPanel, Ui, Vec2,
 };
 
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumIter, IntoEnumIterator};
 
 use crate::api::{self, fetch, Data, Request, Ucell};
 
@@ -15,7 +16,9 @@ use crate::api::{self, fetch, Data, Request, Ucell};
 pub struct DashboardApp {
     pub ip: String,
     pub poll_rate: usize,
-    pub heatmap_delta: f32,
+    pub mode: Mode,
+    pub voltage_heatmap_delta: f32,
+    pub temp_heatmap_delta: f32,
     #[serde(skip)]
     pub last_poll: u128,
     #[serde(skip)]
@@ -26,13 +29,21 @@ pub struct DashboardApp {
     pub error: Option<api::Error>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumIter)]
+pub enum Mode {
+    Voltage,
+    Temperature,
+}
+
 impl Default for DashboardApp {
     fn default() -> Self {
         Self {
             ip: "http://192.168.0.200".into(),
             poll_rate: 1000,
-            heatmap_delta: 100.0,
             last_poll: 0,
+            mode: Mode::Voltage,
+            voltage_heatmap_delta: 100.0,
+            temp_heatmap_delta: 10.0,
             request: None,
             data: None,
             error: None,
@@ -78,12 +89,32 @@ impl eframe::App for DashboardApp {
                         .speed(10),
                 );
 
+                ComboBox::new("mode", "")
+                    .width(120.0)
+                    .selected_text(self.mode.to_string())
+                    .show_ui(ui, |ui| {
+                        for m in Mode::iter() {
+                            ui.selectable_value(&mut self.mode, m, m.to_string());
+                        }
+                    });
+
                 ui.label("Heatmap delta");
-                ui.add(
-                    DragValue::new(&mut self.heatmap_delta)
-                        .clamp_range(5.0..=1000.0)
-                        .speed(1.0),
-                );
+                match self.mode {
+                    Mode::Voltage => {
+                        ui.add(
+                            DragValue::new(&mut self.voltage_heatmap_delta)
+                                .clamp_range(5.0..=1000.0)
+                                .speed(1.0),
+                        );
+                    }
+                    Mode::Temperature => {
+                        ui.add(
+                            DragValue::new(&mut self.temp_heatmap_delta)
+                                .clamp_range(1.0..=40.0)
+                                .speed(0.1),
+                        );
+                    }
+                }
 
                 if self.request.is_some() {
                     ui.with_layout(Layout::right_to_left(), |ui| {
@@ -211,28 +242,35 @@ impl eframe::App for DashboardApp {
             }
 
             if let Some(data) = &self.data {
-                let pos = ui.cursor().min;
-                let size = ui.available_size();
-                let stack_size = size / Vec2::new(4.0, 2.0);
+                match self.mode {
+                    Mode::Voltage => {
+                        let pos = ui.cursor().min;
+                        let size = ui.available_size();
+                        let stack_size = size / Vec2::new(4.0, 2.0);
 
-                const STACK_POS: [(f32, f32); 8] = [
-                    (2.0, 1.0),
-                    (2.0, 0.0),
-                    (3.0, 0.0),
-                    (3.0, 1.0),
-                    (0.0, 1.0),
-                    (0.0, 0.0),
-                    (1.0, 0.0),
-                    (1.0, 1.0),
-                ];
+                        const STACK_POS: [(f32, f32); 8] = [
+                            (2.0, 1.0),
+                            (2.0, 0.0),
+                            (3.0, 0.0),
+                            (3.0, 1.0),
+                            (0.0, 1.0),
+                            (0.0, 0.0),
+                            (1.0, 0.0),
+                            (1.0, 1.0),
+                        ];
 
-                for (i, (x, y)) in STACK_POS.iter().enumerate() {
-                    let stack_pos = pos + Vec2::new(x * stack_size.x, y * stack_size.y);
-                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
-                    let offset = i * 18;
-                    ui.allocate_ui_at_rect(stack_rect, |ui| {
-                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
-                    });
+                        for (i, (x, y)) in STACK_POS.iter().enumerate() {
+                            let stack_pos = pos + Vec2::new(x * stack_size.x, y * stack_size.y);
+                            let stack_rect = Rect::from_min_size(stack_pos, stack_size);
+                            let offset = i * 18;
+                            ui.allocate_ui_at_rect(stack_rect, |ui| {
+                                draw_stack(ui, &data.ucell, offset, self.voltage_heatmap_delta)
+                            });
+                        }
+                    }
+                    Mode::Temperature => {
+                        // TODO
+                    }
                 }
             }
         });

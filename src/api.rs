@@ -8,6 +8,8 @@ lazy_static! {
     static ref MAIN_PATTERN: Regex = Regex::new("Parametersatz = \"([^\"]*)\"").unwrap();
     static ref UCELL_STATS_PATTERN: Regex = Regex::new("PSet0 = \"([^\"]*)\"").unwrap();
     static ref UCELL_CELLS_PATTERN: Regex = Regex::new("PSet = \"([^\"]*)\"").unwrap();
+    // TODO
+    static ref TEMP_PATTERN: Regex = Regex::new("PSet = \"([^\"]*)\"").unwrap();
 }
 
 pub enum Error {
@@ -15,13 +17,12 @@ pub enum Error {
     Fetch(anyhow::Error),
 }
 
-#[derive(Default)]
 pub struct Data {
     pub main: Main,
     pub ucell: Ucell,
+    pub temp: Temp,
 }
 
-#[derive(Default)]
 pub struct Main {
     // in mV
     pub voltage: f32,
@@ -36,7 +37,6 @@ pub struct Main {
     pub temp_master: f32,
 }
 
-#[derive(Default)]
 pub struct Ucell {
     pub num_cells: usize,
     pub num_slaves: usize,
@@ -51,9 +51,14 @@ pub struct Ucell {
     pub cell_voltage: Vec<u16>,
 }
 
+pub struct Temp {
+    pub cell_temp: Vec<f32>,
+}
+
 pub struct Request {
     main_task: JoinHandle<anyhow::Result<Main>>,
     ucell_task: JoinHandle<anyhow::Result<Ucell>>,
+    temp_task: JoinHandle<anyhow::Result<Temp>>,
 }
 
 pub fn fetch(ip: &str) -> Request {
@@ -61,10 +66,13 @@ pub fn fetch(ip: &str) -> Request {
     let main_task = thread::spawn(move || main_data(&owned_ip));
     let owned_ip = ip.to_string();
     let ucell_task = thread::spawn(move || ucell(&owned_ip));
+    let owned_ip = ip.to_string();
+    let temp_task = thread::spawn(move || temp(&owned_ip));
 
     Request {
         main_task,
         ucell_task,
+        temp_task,
     }
 }
 
@@ -77,6 +85,7 @@ impl Request {
         Ok(Data {
             main: join_task(self.main_task)?,
             ucell: join_task(self.ucell_task)?,
+            temp: join_task(self.temp_task)?,
         })
     }
 }
@@ -140,8 +149,8 @@ fn ucell(ip: &str) -> anyhow::Result<Ucell> {
     let resp = ureq::get(&url).call()?;
     let text = resp.into_string()?;
 
-    let voltage_captures = UCELL_CELLS_PATTERN.captures(&text).unwrap();
-    let voltage = voltage_captures
+    let cell_voltage_captures = UCELL_CELLS_PATTERN.captures(&text).unwrap();
+    let cell_voltage = cell_voltage_captures
         .get(1)
         .unwrap()
         .as_str()
@@ -163,7 +172,28 @@ fn ucell(ip: &str) -> anyhow::Result<Ucell> {
         avg_voltage: parse_next(&mut stats_iter)?,
         min_voltage: parse_next(&mut stats_iter)?,
         max_voltage: parse_next(&mut stats_iter)?,
-        cell_voltage: voltage,
+        cell_voltage,
+    })
+}
+
+fn temp(ip: &str) -> anyhow::Result<Temp> {
+    // TODO
+    // let url = format!("{ip}/temperature.shtml");
+    // let resp = ureq::get(&url).call()?;
+    // let text = resp.into_string()?;
+
+    // let cell_temp_captures = TEMP_PATTERN.captures(&text).unwrap();
+    // TODO
+    // let cell_temp = cell_temp_captures
+    //     .get(1)
+    //     .unwrap()
+    //     .as_str()
+    //     .split(',')
+    //     .map(|s| s.parse::<f32>().unwrap_or(0.0))
+    //     .collect();
+
+    Ok(Temp {
+        cell_temp: Vec::new(),
     })
 }
 
