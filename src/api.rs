@@ -38,8 +38,8 @@ pub struct Main {
 
 #[derive(Default)]
 pub struct Ucell {
-    pub num_cells: usize,
     pub num_slaves: usize,
+    pub num_cells: usize,
     pub num_cells_per_slave: usize,
     pub num_temp_sensors: usize,
     pub num_safe_resistors: usize,
@@ -154,8 +154,8 @@ fn ucell(ip: &str) -> anyhow::Result<Ucell> {
     let mut stats_iter = stats_captures.get(1).unwrap().as_str().split(',');
 
     Ok(Ucell {
-        num_cells: parse_next(&mut stats_iter)?,
         num_slaves: parse_next(&mut stats_iter)?,
+        num_cells: parse_next(&mut stats_iter)?,
         num_cells_per_slave: parse_next(&mut stats_iter)?,
         num_temp_sensors: parse_next(&mut stats_iter)?,
         num_safe_resistors: parse_next(&mut stats_iter)?,

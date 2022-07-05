@@ -172,12 +172,12 @@ impl eframe::App for DashboardApp {
                                 ui.end_row();
                                 ui.end_row();
 
-                                ui.label("#Cells");
-                                ui.label(data.ucell.num_cells.to_string());
-                                ui.end_row();
-
                                 ui.label("#Slaves");
                                 ui.label(data.ucell.num_slaves.to_string());
+                                ui.end_row();
+
+                                ui.label("#Cells");
+                                ui.label(data.ucell.num_cells.to_string());
                                 ui.end_row();
 
                                 ui.label("#Cells / #Slaves");
