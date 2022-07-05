@@ -118,6 +118,8 @@ impl eframe::App for DashboardApp {
                                 ui.label(data.main.voltage.to_string());
                                 ui.label("V");
                                 ui.end_row();
+                                
+                                ui.end_row();
 
                                 ui.label("Min cell voltage");
                                 ui.label(data.ucell.min_voltage.to_string());
@@ -138,6 +140,8 @@ impl eframe::App for DashboardApp {
                                 ui.label("Delta cell voltage");
                                 ui.label(delta.to_string());
                                 ui.label("mV");
+                                ui.end_row();
+
                                 ui.end_row();
 
                                 ui.label("Current");
