@@ -39,7 +39,7 @@ jobs:
         fail_on_unmatched_files: true
         files: |
           target/release/s3bmsdashboard
-  
+
   build-windows:
     runs-on: windows-latest
 
