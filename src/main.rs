@@ -11,6 +11,7 @@ const APP_NAME: &str = "s3bmsdashboard";
 fn main() -> anyhow::Result<()> {
     let options = NativeOptions {
         drag_and_drop_support: true,
+        follow_system_theme: true,
         ..Default::default()
     };
     eframe::run_native(
