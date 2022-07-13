@@ -253,7 +253,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
             .get(cell_index)
             .copied()
             .unwrap_or(u16::MAX);
-        let bg_color = heatmap_color(ucell.avg_voltage, cell_voltage, heatmap_delta);
+        let bg_color = heatmap_color(ui, ucell.avg_voltage, cell_voltage, heatmap_delta);
 
         let cell_pos = pos + Vec2::new(0.0, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
@@ -289,7 +289,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
             .get(cell_index)
             .copied()
             .unwrap_or(u16::MAX);
-        let bg_color = heatmap_color(ucell.avg_voltage, cell_voltage, heatmap_delta);
+        let bg_color = heatmap_color(ui, ucell.avg_voltage, cell_voltage, heatmap_delta);
 
         let cell_pos = pos + Vec2::new(cell_size.x, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
@@ -346,16 +346,29 @@ impl DashboardApp {
     }
 }
 
-fn heatmap_color(avg: u16, cell: u16, delta: f32) -> Color32 {
-    const BG: u8 = 30;
-    const RANGE: f32 = (255 - BG) as f32;
-    let diff = ((cell as f32 - avg as f32) / (delta / 2.0)).clamp(-1.0, 1.0);
-    if diff < 0.0 {
-        let r = (-RANGE * diff) as u8 + BG;
-        Color32::from_rgb(r, BG, BG)
+fn heatmap_color(ui: &Ui, avg: u16, cell: u16, delta: f32) -> Color32 {
+    if ui.style().visuals.dark_mode {
+        const BG: u8 = 0x20;
+        const RANGE: f32 = (255 - BG) as f32;
+        let diff = ((cell as f32 - avg as f32) / (delta / 2.0)).clamp(-1.0, 1.0);
+        if diff < 0.0 {
+            let r = (-RANGE * diff) as u8 + BG;
+            Color32::from_rgb(r, BG, BG)
+        } else {
+            let b = (RANGE * diff) as u8 + BG;
+            Color32::from_rgb(BG, BG, b)
+        }
     } else {
-        let b = (RANGE * diff) as u8 + BG;
-        Color32::from_rgb(BG, BG, b)
+        const BG: u8 = 0xf0;
+        const RANGE: f32 = BG as f32;
+        let diff = ((cell as f32 - avg as f32) / (delta / 2.0)).clamp(-1.0, 1.0);
+        if diff < 0.0 {
+            let gb = BG - (-RANGE * diff) as u8;
+            Color32::from_rgb(BG, gb, gb)
+        } else {
+            let rg = BG - (RANGE * diff) as u8;
+            Color32::from_rgb(rg, rg, BG)
+        }
     }
 }
 
