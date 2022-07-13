@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use egui::style::Margin;
 use egui::{
@@ -62,6 +62,7 @@ impl eframe::App for DashboardApp {
 
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         self.poll_data();
+        ctx.request_repaint_after(Duration::from_millis(100));
 
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             menu::bar(ui, |ui| {
@@ -118,7 +119,6 @@ impl eframe::App for DashboardApp {
                                 ui.label(data.main.voltage.to_string());
                                 ui.label("V");
                                 ui.end_row();
-                                
                                 ui.end_row();
 
                                 ui.label("Min cell voltage");
@@ -141,7 +141,6 @@ impl eframe::App for DashboardApp {
                                 ui.label(delta.to_string());
                                 ui.label("mV");
                                 ui.end_row();
-
                                 ui.end_row();
 
                                 ui.label("Current");
