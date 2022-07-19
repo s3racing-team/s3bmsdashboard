@@ -13,6 +13,7 @@ use crate::api::{self, fetch, Data, Request, Ucell};
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct DashboardApp {
+    pub safe: bool,
     pub ip: String,
     pub poll_rate: usize,
     pub heatmap_delta: f32,
@@ -29,6 +30,7 @@ pub struct DashboardApp {
 impl Default for DashboardApp {
     fn default() -> Self {
         Self {
+            safe: true,
             ip: "http://192.168.0.200".into(),
             poll_rate: 1000,
             heatmap_delta: 100.0,
@@ -61,11 +63,18 @@ impl eframe::App for DashboardApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        if ctx.input().key_down(egui::Key::V) && ctx.input().key_down(egui::Key::W) {
+            self.safe = !self.safe;
+        }
+
         self.poll_data();
         ctx.request_repaint_after(Duration::from_millis(100));
 
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             menu::bar(ui, |ui| {
+                if self.safe {
+                    ui.label("s3racing");
+                }
                 ui.label("IP");
                 ui.horizontal(|ui| {
                     ui.set_width(160.0);
@@ -86,14 +95,14 @@ impl eframe::App for DashboardApp {
                         .speed(1.0),
                 );
 
-                if self.request.is_some() {
-                    ui.with_layout(Layout::right_to_left(), |ui| {
+                ui.with_layout(Layout::right_to_left(), |ui| {
+                    if self.request.is_some() {
                         ui.spinner();
                         if ui.button("cancel").clicked() {
                             self.request = None;
                         }
-                    });
-                }
+                    }
+                });
             });
         });
 
@@ -338,7 +347,7 @@ impl DashboardApp {
                 let now = now();
 
                 if self.last_poll + (self.poll_rate as u128) < now {
-                    self.request = Some(fetch(&self.ip));
+                    self.request = Some(fetch(&self.ip, self.safe));
                     self.last_poll = now;
                 }
             }

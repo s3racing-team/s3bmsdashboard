@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::str::{FromStr, Split};
 use std::thread::{self, JoinHandle};
 
 use lazy_static::lazy_static;
@@ -56,11 +56,11 @@ pub struct Request {
     ucell_task: JoinHandle<anyhow::Result<Ucell>>,
 }
 
-pub fn fetch(ip: &str) -> Request {
+pub fn fetch(ip: &str, safe: bool) -> Request {
     let owned_ip = ip.to_string();
     let main_task = thread::spawn(move || main_data(&owned_ip));
     let owned_ip = ip.to_string();
-    let ucell_task = thread::spawn(move || ucell(&owned_ip));
+    let ucell_task = thread::spawn(move || ucell(&owned_ip, safe));
 
     Request {
         main_task,
@@ -98,31 +98,25 @@ fn main_data(ip: &str) -> anyhow::Result<Main> {
     let mut stats_iter = stats_captures.get(1).unwrap().as_str().split(',');
 
     skip(&mut stats_iter, 1);
-    let mut voltage = parse_next(&mut stats_iter)?;
-    voltage /= 1000.0;
+    let voltage = parse_next::<f32>(&mut stats_iter)? / 1000.0;
 
     skip(&mut stats_iter, 2);
     let current = parse_next(&mut stats_iter)?;
 
     skip(&mut stats_iter, 2);
-    let mut state_of_charge = parse_next(&mut stats_iter)?;
-    state_of_charge /= 10.0;
+    let state_of_charge = parse_next::<f32>(&mut stats_iter)? / 10.0;
 
     skip(&mut stats_iter, 2);
-    let mut temp_avg = parse_next(&mut stats_iter)?;
-    temp_avg /= 10.0;
+    let temp_avg = parse_next::<f32>(&mut stats_iter)? / 10.0;
 
     skip(&mut stats_iter, 2);
-    let mut temp_min = parse_next(&mut stats_iter)?;
-    temp_min /= 10.0;
+    let temp_min = parse_next::<f32>(&mut stats_iter)? / 10.0;
 
     skip(&mut stats_iter, 2);
-    let mut temp_max = parse_next(&mut stats_iter)?;
-    temp_max /= 10.0;
+    let temp_max = parse_next::<f32>(&mut stats_iter)? / 10.0;
 
     skip(&mut stats_iter, 2);
-    let mut temp_master = parse_next(&mut stats_iter)?;
-    temp_master /= 10.0;
+    let temp_master = parse_next::<f32>(&mut stats_iter)? / 10.0;
 
     Ok(Main {
         voltage,
@@ -135,13 +129,13 @@ fn main_data(ip: &str) -> anyhow::Result<Main> {
     })
 }
 
-fn ucell(ip: &str) -> anyhow::Result<Ucell> {
+fn ucell(ip: &str, safe: bool) -> anyhow::Result<Ucell> {
     let url = format!("{ip}/ucell.shtml");
     let resp = ureq::get(&url).call()?;
     let text = resp.into_string()?;
 
     let voltage_captures = UCELL_CELLS_PATTERN.captures(&text).unwrap();
-    let voltage = voltage_captures
+    let mut voltage: Vec<u16> = voltage_captures
         .get(1)
         .unwrap()
         .as_str()
@@ -150,10 +144,19 @@ fn ucell(ip: &str) -> anyhow::Result<Ucell> {
         .map(|s| s.parse::<u16>().unwrap_or(0))
         .collect();
 
+    let avg = voltage.iter().map(|n| *n as u64).sum::<u64>() / voltage.len() as u64;
+    if safe {
+        for v in &mut voltage {
+            if *v < 3698 || *v > 4203 {
+                *v = avg as u16;
+            }
+        }
+    }
+
     let stats_captures = UCELL_STATS_PATTERN.captures(&text).unwrap();
     let mut stats_iter = stats_captures.get(1).unwrap().as_str().split(',');
 
-    Ok(Ucell {
+    let mut ucell = Ucell {
         num_slaves: parse_next(&mut stats_iter)?,
         num_cells: parse_next(&mut stats_iter)?,
         num_cells_per_slave: parse_next(&mut stats_iter)?,
@@ -164,10 +167,18 @@ fn ucell(ip: &str) -> anyhow::Result<Ucell> {
         min_voltage: parse_next(&mut stats_iter)?,
         max_voltage: parse_next(&mut stats_iter)?,
         cell_voltage: voltage,
-    })
+    };
+
+    if safe {
+        let voltage = &ucell.cell_voltage;
+        ucell.min_voltage = voltage.iter().copied().filter(|&n| n > 3690).min().unwrap();
+        ucell.max_voltage = voltage.iter().copied().filter(|&n| n < 4210).max().unwrap();
+    }
+
+    Ok(ucell)
 }
 
-fn parse_next<'a, T: FromStr>(iter: &mut impl Iterator<Item = &'a str>) -> anyhow::Result<T> {
+fn parse_next<T: FromStr>(iter: &mut Split<char>) -> anyhow::Result<T> {
     match iter.next() {
         Some(s) => s
             .parse()
