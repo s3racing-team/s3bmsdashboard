@@ -141,7 +141,7 @@ fn ucell(ip: &str) -> anyhow::Result<Ucell> {
     let text = resp.into_string()?;
 
     let voltage_captures = UCELL_CELLS_PATTERN.captures(&text).unwrap();
-    let voltage = voltage_captures
+    let mut voltage: Vec<u16> = voltage_captures
         .get(1)
         .unwrap()
         .as_str()
@@ -149,6 +149,13 @@ fn ucell(ip: &str) -> anyhow::Result<Ucell> {
         .skip(2)
         .map(|s| s.parse::<u16>().unwrap_or(0))
         .collect();
+
+    let avg = voltage.iter().map(|n| *n as u64).sum::<u64>() / voltage.len() as u64;
+    for v in &mut voltage {
+        if *v < 2000 || *v > 5000 {
+            *v = avg as u16;
+        }
+    }
 
     let stats_captures = UCELL_STATS_PATTERN.captures(&text).unwrap();
     let mut stats_iter = stats_captures.get(1).unwrap().as_str().split(',');
