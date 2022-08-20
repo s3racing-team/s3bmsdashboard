@@ -17,6 +17,7 @@ pub struct DashboardApp {
     pub ip: String,
     pub poll_rate: usize,
     pub heatmap_delta: f32,
+    pub relative_heatmap: bool,
     #[serde(skip)]
     pub last_poll: u128,
     #[serde(skip)]
@@ -27,6 +28,12 @@ pub struct DashboardApp {
     pub error: Option<api::Error>,
 }
 
+#[derive(Clone, Copy)]
+enum Side {
+    Left,
+    Right,
+}
+
 impl Default for DashboardApp {
     fn default() -> Self {
         Self {
@@ -34,6 +41,7 @@ impl Default for DashboardApp {
             ip: "http://192.168.0.200".into(),
             poll_rate: 1000,
             heatmap_delta: 100.0,
+            relative_heatmap: false,
             last_poll: 0,
             request: None,
             data: None,
@@ -95,6 +103,9 @@ impl eframe::App for DashboardApp {
                         .speed(1.0),
                 );
 
+                ui.label("Relative heatmap");
+                ui.checkbox(&mut self.relative_heatmap, "");
+
                 ui.with_layout(Layout::right_to_left(), |ui| {
                     if self.request.is_some() {
                         ui.spinner();
@@ -147,23 +158,23 @@ impl eframe::App for DashboardApp {
                 let size = ui.available_size();
                 let stack_size = size / Vec2::new(4.0, 2.0);
 
-                const STACK_POS: [(f32, f32); 8] = [
-                    (2.0, 1.0),
-                    (2.0, 0.0),
-                    (3.0, 0.0),
-                    (3.0, 1.0),
-                    (0.0, 1.0),
-                    (0.0, 0.0),
-                    (1.0, 0.0),
-                    (1.0, 1.0),
+                const STACK_POS: [(f32, f32, Side); 8] = [
+                    (2.0, 1.0, Side::Right),
+                    (2.0, 0.0, Side::Right),
+                    (3.0, 0.0, Side::Right),
+                    (3.0, 1.0, Side::Right),
+                    (0.0, 1.0, Side::Left),
+                    (0.0, 0.0, Side::Left),
+                    (1.0, 0.0, Side::Left),
+                    (1.0, 1.0, Side::Left),
                 ];
 
-                for (i, (x, y)) in STACK_POS.iter().enumerate() {
+                for (i, (x, y, side)) in STACK_POS.iter().enumerate() {
                     let stack_pos = pos + Vec2::new(x * stack_size.x, y * stack_size.y);
                     let stack_rect = Rect::from_min_size(stack_pos, stack_size);
                     let offset = i * 18;
                     ui.allocate_ui_at_rect(stack_rect, |ui| {
-                        draw_stack(ui, &data.ucell, offset, self.heatmap_delta)
+                        draw_stack(ui, &data.ucell, offset, self, *side)
                     });
                 }
             }
@@ -224,9 +235,17 @@ fn field(ui: &mut Ui, name: &str, value: impl ToString, unit: &str) {
     ui.end_row();
 }
 
-fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
+fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, app: &DashboardApp, side: Side) {
     let pos = ui.cursor().min;
     let cell_size = ui.available_size() / Vec2::new(2.0, 9.0);
+    let avg = if app.relative_heatmap {
+        match side {
+            Side::Left => ucell.left.avg_voltage,
+            Side::Right => ucell.right.avg_voltage,
+        }
+    } else {
+        ucell.overall.avg_voltage
+    };
 
     for i in 0..9 {
         let cell_index = offset + (8 - i);
@@ -235,7 +254,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
             .get(cell_index)
             .copied()
             .unwrap_or(u16::MAX);
-        let bg_color = heatmap_color(ui, ucell.overall.avg_voltage, cell_voltage, heatmap_delta);
+        let bg_color = heatmap_color(ui, avg, cell_voltage, app.heatmap_delta);
 
         let cell_pos = pos + Vec2::new(0.0, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
@@ -271,7 +290,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
             .get(cell_index)
             .copied()
             .unwrap_or(u16::MAX);
-        let bg_color = heatmap_color(ui, ucell.avg_voltage, cell_voltage, heatmap_delta);
+        let bg_color = heatmap_color(ui, avg, cell_voltage, app.heatmap_delta);
 
         let cell_pos = pos + Vec2::new(cell_size.x, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
