@@ -123,87 +123,7 @@ impl eframe::App for DashboardApp {
                 .show_inside(ui, |ui| {
                     if let Some(data) = &self.data {
                         ScrollArea::vertical().show(ui, |ui| {
-                            Grid::new("stats_container").show(ui, |ui| {
-                                ui.label("Voltage");
-                                ui.label(format!("{:.3}", data.main.voltage));
-                                ui.label("V");
-                                ui.end_row();
-                                ui.end_row();
-
-                                ui.label("Min cell voltage");
-                                ui.label(data.ucell.min_voltage.to_string());
-                                ui.label("mV");
-                                ui.end_row();
-
-                                ui.label("Avg cell voltage");
-                                ui.label(data.ucell.avg_voltage.to_string());
-                                ui.label("mV");
-                                ui.end_row();
-
-                                ui.label("Max cell voltage");
-                                ui.label(data.ucell.max_voltage.to_string());
-                                ui.label("mV");
-                                ui.end_row();
-
-                                let delta = data.ucell.max_voltage - data.ucell.min_voltage;
-                                ui.label("Delta cell voltage");
-                                ui.label(delta.to_string());
-                                ui.label("mV");
-                                ui.end_row();
-                                ui.end_row();
-
-                                ui.label("Current");
-                                ui.label(data.main.current.to_string());
-                                ui.label("mA");
-                                ui.end_row();
-
-                                ui.label("State of charge");
-                                ui.label(data.main.state_of_charge.to_string());
-                                ui.label("%");
-                                ui.end_row();
-                                ui.end_row();
-
-                                ui.label("Min temperature");
-                                ui.label(data.main.temp_min.to_string());
-                                ui.label("°C");
-                                ui.end_row();
-
-                                ui.label("Avg temperature");
-                                ui.label(data.main.temp_avg.to_string());
-                                ui.label("°C");
-                                ui.end_row();
-
-                                ui.label("Max temperature");
-                                ui.label(data.main.temp_max.to_string());
-                                ui.label("°C");
-                                ui.end_row();
-
-                                ui.label("Master temperature");
-                                ui.label(data.main.temp_master.to_string());
-                                ui.label("°C");
-                                ui.end_row();
-                                ui.end_row();
-
-                                ui.label("#Slaves");
-                                ui.label(data.ucell.num_slaves.to_string());
-                                ui.end_row();
-
-                                ui.label("#Cells");
-                                ui.label(data.ucell.num_cells.to_string());
-                                ui.end_row();
-
-                                ui.label("#Cells / #Slaves");
-                                ui.label(data.ucell.num_cells_per_slave.to_string());
-                                ui.end_row();
-
-                                ui.label("#Temperature sensors");
-                                ui.label(data.ucell.num_temp_sensors.to_string());
-                                ui.end_row();
-
-                                ui.label("#Safe resistors");
-                                ui.label(data.ucell.num_safe_resistors.to_string());
-                                ui.end_row();
-                            });
+                            Grid::new("stats_container").show(ui, |ui| side_panel(ui, data));
                         });
                     }
                 });
@@ -251,6 +171,59 @@ impl eframe::App for DashboardApp {
     }
 }
 
+fn side_panel(ui: &mut Ui, data: &Data) {
+    let ucell = &data.ucell;
+
+    field(ui, "Current", data.main.current.to_string(), "mA");
+    field(ui, "Voltage", format!("{:.3}", data.main.voltage), "V");
+    ui.end_row();
+
+    heading(ui, "Both accumulators");
+    field(ui, "Min cell voltage", ucell.overall.min_voltage, "mV");
+    field(ui, "Avg cell voltage", ucell.overall.avg_voltage, "mV");
+    field(ui, "Max cell voltage", ucell.overall.max_voltage, "mV");
+    field(ui, "Delta cell voltage", ucell.overall.delta_voltage, "mV");
+    ui.end_row();
+
+    heading(ui, "Right accumulator");
+    field(ui, "Min cell voltage", ucell.right.min_voltage, "mV");
+    field(ui, "Avg cell voltage", ucell.right.avg_voltage, "mV");
+    field(ui, "Max cell voltage", ucell.right.max_voltage, "mV");
+    field(ui, "Delta cell voltage", ucell.right.delta_voltage, "mV");
+    ui.end_row();
+
+    heading(ui, "Left accumulator");
+    field(ui, "Min cell voltage", ucell.left.min_voltage, "mV");
+    field(ui, "Avg cell voltage", ucell.left.avg_voltage, "mV");
+    field(ui, "Max cell voltage", ucell.left.max_voltage, "mV");
+    field(ui, "Delta cell voltage", ucell.left.delta_voltage, "mV");
+    ui.end_row();
+
+    field(ui, "Min temperature", data.main.temp_min, "°C");
+    field(ui, "Avg temperature", data.main.temp_avg, "°C");
+    field(ui, "Max temperature", data.main.temp_max, "°C");
+    field(ui, "Master temperature", data.main.temp_master, "°C");
+    ui.end_row();
+
+    field(ui, "#Slaves", ucell.num_slaves, "");
+    field(ui, "#Cells", ucell.num_cells, "");
+    field(ui, "#Cells / #Slaves", ucell.num_cells_per_slave, "");
+    field(ui, "#Temperature sensors", ucell.num_temp_sensors, "");
+    field(ui, "#Safe resistors", ucell.num_safe_resistors, "");
+}
+
+fn heading(ui: &mut Ui, name: &str) {
+    ui.heading(name);
+    ui.end_row();
+}
+
+fn field(ui: &mut Ui, name: &str, value: impl ToString, unit: &str) {
+    ui.label(name);
+    ui.label(value.to_string());
+    ui.label(unit);
+    ui.end_row();
+}
+
 fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
     let pos = ui.cursor().min;
     let cell_size = ui.available_size() / Vec2::new(2.0, 9.0);
@@ -262,7 +235,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, heatmap_delta: f32) {
             .get(cell_index)
             .copied()
             .unwrap_or(u16::MAX);
-        let bg_color = heatmap_color(ui, ucell.avg_voltage, cell_voltage, heatmap_delta);
+        let bg_color = heatmap_color(ui, ucell.overall.avg_voltage, cell_voltage, heatmap_delta);
 
         let cell_pos = pos + Vec2::new(0.0, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);

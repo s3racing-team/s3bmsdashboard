@@ -1,3 +1,4 @@
+use std::cmp;
 use std::str::{FromStr, Split};
 use std::thread::{self, JoinHandle};
 
@@ -44,11 +45,20 @@ pub struct Ucell {
     pub num_temp_sensors: usize,
     pub num_safe_resistors: usize,
 
+    pub overall: CellStats,
+    pub left: CellStats,
+    pub right: CellStats,
+
+    pub cell_voltage: Vec<u16>,
+}
+
+#[derive(Default)]
+pub struct CellStats {
     // in mV
     pub avg_voltage: u16,
     pub min_voltage: u16,
     pub max_voltage: u16,
-    pub cell_voltage: Vec<u16>,
+    pub delta_voltage: u16,
 }
 
 pub struct Request {
@@ -144,38 +154,69 @@ fn ucell(ip: &str, safe: bool) -> anyhow::Result<Ucell> {
         .map(|s| s.parse::<u16>().unwrap_or(0))
         .collect();
 
-    let avg = voltage.iter().map(|n| *n as u64).sum::<u64>() / voltage.len() as u64;
+    let avg_voltage = (voltage.iter().map(|n| *n as usize).sum::<usize>() / voltage.len()) as u16;
     if safe {
         for v in &mut voltage {
             if *v < 3698 || *v > 4203 {
-                *v = avg as u16;
+                *v = avg_voltage;
             }
         }
     }
 
+    let right = voltage_stats(voltage.iter().take(72).copied());
+    let left = voltage_stats(voltage.iter().skip(72).copied());
+
+    let max_voltage = cmp::max(right.max_voltage, left.max_voltage);
+    let min_voltage = cmp::min(right.min_voltage, left.min_voltage);
+    let overall = CellStats {
+        avg_voltage,
+        max_voltage,
+        min_voltage,
+        delta_voltage: max_voltage - min_voltage,
+    };
+
     let stats_captures = UCELL_STATS_PATTERN.captures(&text).unwrap();
     let mut stats_iter = stats_captures.get(1).unwrap().as_str().split(',');
 
-    let mut ucell = Ucell {
+    Ok(Ucell {
         num_slaves: parse_next(&mut stats_iter)?,
         num_cells: parse_next(&mut stats_iter)?,
         num_cells_per_slave: parse_next(&mut stats_iter)?,
         num_temp_sensors: parse_next(&mut stats_iter)?,
         num_safe_resistors: parse_next(&mut stats_iter)?,
 
-        avg_voltage: parse_next(&mut stats_iter)?,
-        min_voltage: parse_next(&mut stats_iter)?,
-        max_voltage: parse_next(&mut stats_iter)?,
+        overall,
+        left,
+        right,
+
         cell_voltage: voltage,
-    };
+    })
+}
 
-    if safe {
-        let voltage = &ucell.cell_voltage;
-        ucell.min_voltage = voltage.iter().copied().filter(|&n| n > 3690).min().unwrap();
-        ucell.max_voltage = voltage.iter().copied().filter(|&n| n < 4210).max().unwrap();
+fn voltage_stats(voltage: impl Iterator<Item = u16>) -> CellStats {
+    let mut min = u16::MAX;
+    let mut max = 0;
+    let mut sum = 0;
+    let mut len = 0;
+    for v in voltage {
+        if v < min {
+            min = v;
+        }
+        if v > max {
+            max = v;
+        }
+        sum += v as usize;
+        len += 1;
     }
+    let delta = max - min;
+    let avg = (sum / len) as u16;
 
-    Ok(ucell)
+    CellStats {
+        min_voltage: min,
+        avg_voltage: avg,
+        max_voltage: max,
+        delta_voltage: delta,
+    }
 }
 
 fn parse_next<T: FromStr>(iter: &mut Split<char>) -> anyhow::Result<T> {
