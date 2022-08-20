@@ -125,7 +125,7 @@ impl eframe::App for DashboardApp {
                         ScrollArea::vertical().show(ui, |ui| {
                             Grid::new("stats_container").show(ui, |ui| {
                                 ui.label("Voltage");
-                                ui.label(data.main.voltage.to_string());
+                                ui.label(format!("{:.3}", data.main.voltage));
                                 ui.label("V");
                                 ui.end_row();
                                 ui.end_row();
