@@ -8,7 +8,7 @@ mod app;
 
 const APP_NAME: &str = "s3bmsdashboard";
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     let options = NativeOptions {
         drag_and_drop_support: true,
         follow_system_theme: true,

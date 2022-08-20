@@ -2,7 +2,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use egui::style::Margin;
 use egui::{
-    menu, CentralPanel, Color32, DragValue, FontFamily, FontId, Frame, Grid, Layout, Rect,
+    menu, Align, CentralPanel, Color32, DragValue, FontFamily, FontId, Frame, Grid, Layout, Rect,
     RichText, Rounding, ScrollArea, SidePanel, TopBottomPanel, Ui, Vec2,
 };
 
@@ -106,7 +106,7 @@ impl eframe::App for DashboardApp {
                 ui.label("Relative heatmap");
                 ui.checkbox(&mut self.relative_heatmap, "");
 
-                ui.with_layout(Layout::right_to_left(), |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if self.request.is_some() {
                         ui.spinner();
                         if ui.button("cancel").clicked() {
@@ -274,7 +274,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, app: &DashboardApp, sid
         rect.min.y += cell_size.y / 2.0;
         rect.max.x -= 10.0;
         ui.allocate_ui_at_rect(rect, |ui| {
-            ui.with_layout(Layout::right_to_left(), |ui| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(
                     RichText::new((cell_index + 1).to_string())
                         .font(FontId::new(font_size / 2.0, FontFamily::Monospace)),
@@ -310,7 +310,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, app: &DashboardApp, sid
         rect.min.y += cell_size.y / 2.0;
         rect.max.x -= 10.0;
         ui.allocate_ui_at_rect(rect, |ui| {
-            ui.with_layout(Layout::right_to_left(), |ui| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(
                     RichText::new((cell_index + 1).to_string())
                         .font(FontId::new(font_size / 2.0, FontFamily::Monospace)),
