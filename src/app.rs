@@ -63,7 +63,7 @@ impl eframe::App for DashboardApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        if ctx.input().key_down(egui::Key::V) && ctx.input().key_down(egui::Key::W) {
+        if ctx.input().key_down(egui::Key::V) && ctx.input().key_pressed(egui::Key::W) {
             self.safe = !self.safe;
         }
 
