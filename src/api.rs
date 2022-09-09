@@ -157,7 +157,7 @@ fn ucell(ip: &str, safe: bool) -> anyhow::Result<Ucell> {
     let avg_voltage = (voltage.iter().map(|n| *n as usize).sum::<usize>() / voltage.len()) as u16;
     if safe {
         for v in &mut voltage {
-            if *v < 3698 || *v > 4203 {
+            if *v < 3000 || *v > 4200 {
                 *v = avg_voltage;
             }
         }
