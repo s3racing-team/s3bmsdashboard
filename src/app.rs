@@ -8,7 +8,18 @@ use egui::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::api::{self, fetch, Data, Request, Ucell};
+use crate::api::{self, fetch, Data, Request, Tcell, Ucell};
+
+const STACK_POS: [(f32, f32, Side); 8] = [
+    (2.0, 1.0, Side::Right),
+    (2.0, 0.0, Side::Right),
+    (3.0, 0.0, Side::Right),
+    (3.0, 1.0, Side::Right),
+    (0.0, 1.0, Side::Left),
+    (0.0, 0.0, Side::Left),
+    (1.0, 0.0, Side::Left),
+    (1.0, 1.0, Side::Left),
+];
 
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
@@ -16,7 +27,8 @@ pub struct DashboardApp {
     pub safe: bool,
     pub ip: String,
     pub poll_rate: usize,
-    pub heatmap_delta: f32,
+    pub voltage_heatmap_delta: f32,
+    pub temp_heatmap_delta: f32,
     pub relative_heatmap: bool,
     #[serde(skip)]
     pub last_poll: u128,
@@ -40,7 +52,8 @@ impl Default for DashboardApp {
             safe: true,
             ip: "http://192.168.0.200".into(),
             poll_rate: 1000,
-            heatmap_delta: 100.0,
+            voltage_heatmap_delta: 100.0,
+            temp_heatmap_delta: 5.0,
             relative_heatmap: false,
             last_poll: 0,
             request: None,
@@ -96,11 +109,18 @@ impl eframe::App for DashboardApp {
                         .speed(10),
                 );
 
-                ui.label("Heatmap delta");
+                ui.label("Volatge heatmap delta");
                 ui.add(
-                    DragValue::new(&mut self.heatmap_delta)
+                    DragValue::new(&mut self.voltage_heatmap_delta)
                         .clamp_range(5.0..=1000.0)
                         .speed(1.0),
+                );
+
+                ui.label("Temperature heatmap delta");
+                ui.add(
+                    DragValue::new(&mut self.temp_heatmap_delta)
+                        .clamp_range(0.5..=25.0)
+                        .speed(0.1),
                 );
 
                 ui.label("Relative heatmap");
@@ -156,27 +176,16 @@ impl eframe::App for DashboardApp {
             if let Some(data) = &self.data {
                 let pos = ui.cursor().min;
                 let size = ui.available_size();
-                let stack_size = size / Vec2::new(4.0, 2.0);
+                let temp_size = size * Vec2::new(1.0, 0.2);
+                ui.allocate_ui_at_rect(Rect::from_min_size(pos, temp_size), |ui| {
+                    draw_temps(ui, data, self);
+                });
 
-                const STACK_POS: [(f32, f32, Side); 8] = [
-                    (2.0, 1.0, Side::Right),
-                    (2.0, 0.0, Side::Right),
-                    (3.0, 0.0, Side::Right),
-                    (3.0, 1.0, Side::Right),
-                    (0.0, 1.0, Side::Left),
-                    (0.0, 0.0, Side::Left),
-                    (1.0, 0.0, Side::Left),
-                    (1.0, 1.0, Side::Left),
-                ];
-
-                for (i, (x, y, side)) in STACK_POS.iter().enumerate() {
-                    let stack_pos = pos + Vec2::new(x * stack_size.x, y * stack_size.y);
-                    let stack_rect = Rect::from_min_size(stack_pos, stack_size);
-                    let offset = i * 18;
-                    ui.allocate_ui_at_rect(stack_rect, |ui| {
-                        draw_stack(ui, &data.ucell, offset, self, *side)
-                    });
-                }
+                let stacks_pos = pos + Vec2::new(pos.x, pos.y + temp_size.y);
+                let stacks_size = Vec2::new(size.x, size.y - temp_size.y);
+                ui.allocate_ui_at_rect(Rect::from_min_size(stacks_pos, stacks_size), |ui| {
+                    draw_stacks(ui, data, self);
+                });
             }
         });
     }
@@ -235,6 +244,81 @@ fn field(ui: &mut Ui, name: &str, value: impl ToString, unit: &str) {
     ui.end_row();
 }
 
+fn draw_temps(ui: &mut Ui, data: &Data, app: &DashboardApp) {
+    let pos = ui.cursor().min;
+    let size = ui.available_size();
+    let stack_size = size / Vec2::new(4.0, 2.0);
+
+    for (i, (x, y, side)) in STACK_POS.iter().enumerate() {
+        let stack_pos = pos + Vec2::new(x * stack_size.x, y * stack_size.y);
+        let stack_rect = Rect::from_min_size(stack_pos, stack_size);
+        let offset = i * 2;
+        ui.allocate_ui_at_rect(stack_rect, |ui| {
+            draw_temp(ui, &data.tcell, offset, app, *side);
+        });
+    }
+}
+
+fn draw_temp(ui: &mut Ui, tcell: &Tcell, offset: usize, app: &DashboardApp, side: Side) {
+    let pos = ui.cursor().min;
+    let cell_size = ui.available_size() / Vec2::new(2.0, 1.0);
+    let avg = if app.relative_heatmap {
+        match side {
+            Side::Left => tcell.left.avg_temp,
+            Side::Right => tcell.right.avg_temp,
+        }
+    } else {
+        tcell.overall.avg_temp
+    };
+
+    for i in 0..2 {
+        let cell_index = offset + i;
+        let cell_temp = tcell.temp.get(cell_index).copied().unwrap_or(f32::MAX);
+        let bg_color = heatmap_color(ui, avg, cell_temp, app.temp_heatmap_delta);
+
+        let cell_pos = pos + Vec2::new(i as f32 * cell_size.x, 0.0);
+        let mut rect = Rect::from_min_size(cell_pos, cell_size);
+        ui.painter().rect_filled(rect, Rounding::none(), bg_color);
+
+        let font_size = (cell_size.x + cell_size.y) / 8.0;
+
+        ui.allocate_ui_at_rect(rect, |ui| {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    RichText::new(cell_temp.to_string())
+                        .font(FontId::new(font_size, FontFamily::Monospace)),
+                );
+            });
+        });
+
+        rect.min.y += cell_size.y / 2.0;
+        rect.max.x -= 10.0;
+        ui.allocate_ui_at_rect(rect, |ui| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(
+                    RichText::new((cell_index + 1).to_string())
+                        .font(FontId::new(font_size / 2.0, FontFamily::Monospace)),
+                )
+            });
+        });
+    }
+}
+
+fn draw_stacks(ui: &mut Ui, data: &Data, app: &DashboardApp) {
+    let pos = ui.cursor().min;
+    let size = ui.available_size();
+    let stack_size = size / Vec2::new(4.0, 2.0);
+
+    for (i, (x, y, side)) in STACK_POS.iter().enumerate() {
+        let stack_pos = pos + Vec2::new(x * stack_size.x, y * stack_size.y);
+        let stack_rect = Rect::from_min_size(stack_pos, stack_size);
+        let offset = i * 18;
+        ui.allocate_ui_at_rect(stack_rect, |ui| {
+            draw_stack(ui, &data.ucell, offset, app, *side)
+        });
+    }
+}
+
 fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, app: &DashboardApp, side: Side) {
     let pos = ui.cursor().min;
     let cell_size = ui.available_size() / Vec2::new(2.0, 9.0);
@@ -254,7 +338,12 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, app: &DashboardApp, sid
             .get(cell_index)
             .copied()
             .unwrap_or(u16::MAX);
-        let bg_color = heatmap_color(ui, avg, cell_voltage, app.heatmap_delta);
+        let bg_color = heatmap_color(
+            ui,
+            avg as f32,
+            cell_voltage as f32,
+            app.voltage_heatmap_delta,
+        );
 
         let cell_pos = pos + Vec2::new(0.0, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
@@ -290,7 +379,12 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, app: &DashboardApp, sid
             .get(cell_index)
             .copied()
             .unwrap_or(u16::MAX);
-        let bg_color = heatmap_color(ui, avg, cell_voltage, app.heatmap_delta);
+        let bg_color = heatmap_color(
+            ui,
+            avg as f32,
+            cell_voltage as f32,
+            app.voltage_heatmap_delta,
+        );
 
         let cell_pos = pos + Vec2::new(cell_size.x, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
@@ -347,11 +441,11 @@ impl DashboardApp {
     }
 }
 
-fn heatmap_color(ui: &Ui, avg: u16, cell: u16, delta: f32) -> Color32 {
+fn heatmap_color(ui: &Ui, avg: f32, cell: f32, delta: f32) -> Color32 {
     if ui.style().visuals.dark_mode {
         const BG: u8 = 0x20;
         const RANGE: f32 = (255 - BG) as f32;
-        let diff = ((cell as f32 - avg as f32) / (delta / 2.0)).clamp(-1.0, 1.0);
+        let diff = ((cell - avg) / (delta / 2.0)).clamp(-1.0, 1.0);
         if diff < 0.0 {
             let r = (-RANGE * diff) as u8 + BG;
             Color32::from_rgb(r, BG, BG)
@@ -362,7 +456,7 @@ fn heatmap_color(ui: &Ui, avg: u16, cell: u16, delta: f32) -> Color32 {
     } else {
         const BG: u8 = 0xf0;
         const RANGE: f32 = BG as f32;
-        let diff = ((cell as f32 - avg as f32) / (delta / 2.0)).clamp(-1.0, 1.0);
+        let diff = ((cell - avg) / (delta / 2.0)).clamp(-1.0, 1.0);
         if diff < 0.0 {
             let gb = BG - (-RANGE * diff) as u8;
             Color32::from_rgb(BG, gb, gb)

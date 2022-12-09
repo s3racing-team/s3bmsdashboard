@@ -9,6 +9,7 @@ lazy_static! {
     static ref MAIN_PATTERN: Regex = Regex::new("Parametersatz = \"([^\"]*)\"").unwrap();
     static ref UCELL_STATS_PATTERN: Regex = Regex::new("PSet0 = \"([^\"]*)\"").unwrap();
     static ref UCELL_CELLS_PATTERN: Regex = Regex::new("PSet = \"([^\"]*)\"").unwrap();
+    static ref TCELL_PATTERN: Regex = Regex::new("PSet = \"([^\"]*)\"").unwrap();
 }
 
 pub enum Error {
@@ -20,6 +21,7 @@ pub enum Error {
 pub struct Data {
     pub main: Main,
     pub ucell: Ucell,
+    pub tcell: Tcell,
 }
 
 #[derive(Default)]
@@ -45,15 +47,15 @@ pub struct Ucell {
     pub num_temp_sensors: usize,
     pub num_safe_resistors: usize,
 
-    pub overall: CellStats,
-    pub left: CellStats,
-    pub right: CellStats,
+    pub overall: VoltageStats,
+    pub left: VoltageStats,
+    pub right: VoltageStats,
 
     pub cell_voltage: Vec<u16>,
 }
 
 #[derive(Default)]
-pub struct CellStats {
+pub struct VoltageStats {
     // in mV
     pub avg_voltage: u16,
     pub min_voltage: u16,
@@ -61,9 +63,27 @@ pub struct CellStats {
     pub delta_voltage: u16,
 }
 
+#[derive(Default)]
+pub struct Tcell {
+    pub overall: TempStats,
+    pub left: TempStats,
+    pub right: TempStats,
+
+    pub temp: Vec<f32>,
+}
+
+#[derive(Default)]
+pub struct TempStats {
+    pub avg_temp: f32,
+    pub min_temp: f32,
+    pub max_temp: f32,
+    pub delta_temp: f32,
+}
+
 pub struct Request {
     main_task: JoinHandle<anyhow::Result<Main>>,
     ucell_task: JoinHandle<anyhow::Result<Ucell>>,
+    tcell_task: JoinHandle<anyhow::Result<Tcell>>,
 }
 
 pub fn fetch(ip: &str, safe: bool) -> Request {
@@ -71,22 +91,28 @@ pub fn fetch(ip: &str, safe: bool) -> Request {
     let main_task = thread::spawn(move || main_data(&owned_ip));
     let owned_ip = ip.to_string();
     let ucell_task = thread::spawn(move || ucell(&owned_ip, safe));
+    let owned_ip = ip.to_string();
+    let tcell_task = thread::spawn(move || tcell(&owned_ip, safe));
 
     Request {
         main_task,
         ucell_task,
+        tcell_task,
     }
 }
 
 impl Request {
     pub fn is_finished(&self) -> bool {
-        self.main_task.is_finished() && self.ucell_task.is_finished()
+        self.main_task.is_finished()
+            && self.ucell_task.is_finished()
+            && self.tcell_task.is_finished()
     }
 
     pub fn join(self) -> Result<Data, Error> {
         Ok(Data {
             main: join_task(self.main_task)?,
             ucell: join_task(self.ucell_task)?,
+            tcell: join_task(self.tcell_task)?,
         })
     }
 }
@@ -168,7 +194,7 @@ fn ucell(ip: &str, safe: bool) -> anyhow::Result<Ucell> {
 
     let max_voltage = cmp::max(right.max_voltage, left.max_voltage);
     let min_voltage = cmp::min(right.min_voltage, left.min_voltage);
-    let overall = CellStats {
+    let overall = VoltageStats {
         avg_voltage,
         max_voltage,
         min_voltage,
@@ -193,7 +219,52 @@ fn ucell(ip: &str, safe: bool) -> anyhow::Result<Ucell> {
     })
 }
 
-fn voltage_stats(voltage: impl Iterator<Item = u16>) -> CellStats {
+fn tcell(ip: &str, safe: bool) -> anyhow::Result<Tcell> {
+    let url = format!("{ip}/tcell.shtml");
+    let resp = ureq::get(&url).call()?;
+    let text = resp.into_string()?;
+
+    let temp_captures = TCELL_PATTERN.captures(&text).unwrap();
+    let mut temp: Vec<f32> = temp_captures
+        .get(1)
+        .unwrap()
+        .as_str()
+        .split(',')
+        .skip(1)
+        .map(|s| s.parse::<u16>().unwrap_or(0) as f32 / 10.0)
+        .collect();
+
+    let avg_temp = temp.iter().copied().sum::<f32>() / temp.len() as f32;
+
+    let right = temp_stats(temp.iter().take(8).copied());
+    let left = temp_stats(temp.iter().skip(8).copied());
+
+    let max_temp = right.max_temp.max(left.max_temp);
+    let min_temp = right.min_temp.min(left.min_temp);
+    let overall = TempStats {
+        avg_temp,
+        max_temp,
+        min_temp,
+        delta_temp: max_temp - min_temp,
+    };
+
+    if safe {
+        for t in temp.iter_mut() {
+            if *t < 15.0 || *t > 45.0 {
+                *t = avg_temp;
+            }
+        }
+    }
+
+    Ok(Tcell {
+        temp,
+        overall,
+        left,
+        right,
+    })
+}
+
+fn voltage_stats(voltage: impl Iterator<Item = u16>) -> VoltageStats {
     let mut min = u16::MAX;
     let mut max = 0;
     let mut sum = 0;
@@ -205,17 +276,43 @@ fn voltage_stats(voltage: impl Iterator<Item = u16>) -> CellStats {
         if v > max {
             max = v;
         }
-        sum += v as usize;
+        sum += v as u32;
         len += 1;
     }
     let delta = max - min;
     let avg = (sum / len) as u16;
 
-    CellStats {
+    VoltageStats {
         min_voltage: min,
         avg_voltage: avg,
         max_voltage: max,
         delta_voltage: delta,
+    }
+}
+
+fn temp_stats(voltage: impl Iterator<Item = f32>) -> TempStats {
+    let mut min = f32::MAX;
+    let mut max = 0.0;
+    let mut sum = 0.0;
+    let mut len = 0.0;
+    for v in voltage {
+        if v < min {
+            min = v;
+        }
+        if v > max {
+            max = v;
+        }
+        sum += v;
+        len += 1.0;
+    }
+    let delta = max - min;
+    let avg = sum / len;
+
+    TempStats {
+        min_temp: min,
+        avg_temp: avg,
+        max_temp: max,
+        delta_temp: delta,
     }
 }
 
