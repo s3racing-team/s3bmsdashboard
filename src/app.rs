@@ -84,7 +84,7 @@ impl eframe::App for DashboardApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        if ctx.input().key_down(egui::Key::V) && ctx.input().key_pressed(egui::Key::W) {
+        if ctx.input(|i| i.key_down(egui::Key::V) && i.key_pressed(egui::Key::W)) {
             self.safe = !self.safe;
         }
 
@@ -278,7 +278,7 @@ fn draw_temp(ui: &mut Ui, tcell: &Tcell, offset: usize, app: &DashboardApp, side
 
         let cell_pos = pos + Vec2::new(i as f32 * cell_size.x, 0.0);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
-        ui.painter().rect_filled(rect, Rounding::none(), bg_color);
+        ui.painter().rect_filled(rect, Rounding::ZERO, bg_color);
 
         let font_size = (cell_size.x + cell_size.y) / 8.0;
 
@@ -347,7 +347,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, app: &DashboardApp, sid
 
         let cell_pos = pos + Vec2::new(0.0, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
-        ui.painter().rect_filled(rect, Rounding::none(), bg_color);
+        ui.painter().rect_filled(rect, Rounding::ZERO, bg_color);
 
         let font_size = (cell_size.x + cell_size.y) / 8.0;
 
@@ -388,7 +388,7 @@ fn draw_stack(ui: &mut Ui, ucell: &Ucell, offset: usize, app: &DashboardApp, sid
 
         let cell_pos = pos + Vec2::new(cell_size.x, i as f32 * cell_size.y);
         let mut rect = Rect::from_min_size(cell_pos, cell_size);
-        ui.painter().rect_filled(rect, Rounding::none(), bg_color);
+        ui.painter().rect_filled(rect, Rounding::ZERO, bg_color);
 
         let font_size = (cell_size.x + cell_size.y) / 8.0;
 

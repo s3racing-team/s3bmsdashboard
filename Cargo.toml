@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0" }
 anyhow = "1.0"
-eframe = { version = "0.20.1", features = ["persistence", "dark-light"] }
-egui = { version = "0.20.1", features = ["persistence"] }
-ureq = "2.6.2"
-regex = "1.7.1"
+eframe = { version = "0.25.0", features = ["persistence"] }
+egui = { version = "0.25.0", features = ["persistence"] }
+ureq = "2.9.1"
+regex = "1.10.3"
 lazy_static = "1.4.0"
